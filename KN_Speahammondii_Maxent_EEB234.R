@@ -1,27 +1,3 @@
-#submitted EEB234 project idea: Using primarily/mostly R, I will be implementing species distribution modeling 
-#on Spea hammondii (western spadefoot toad) localities retrieved from GBIF. Using Maxent via the "dismo" package 
-#in R I will use 19 bioclimate variables in the present and in past climate scenarios to model past distributions 
-#of S. hammondii, as well as its congener Spea multiplicata, to see if their ranges once overlapped in the past to 
-#allow for ancient hybridization (currently they do not overlap). Final product will be modeled species 
-#distributions of both species for the Last Glacial Maximum (LGM) and Last Interglacial (LIG). with these 
-#projections as models for extreme climatic scenarios of the past million years since S. hammondii and 
-#S. multiplicata have diverged.
-#GBIF downloads come with dozens of columns of information; it is easy to select the desired 
-#columns (latitude and longitude only) using R, but I will also present a way to remove unwanted 
-#columns using regular expressions.
-
-# SDM with dismo/maxent etc.
-# but first manipulate GBIF data with python to get appropriate columns and stuff. Regex etc.
-# as guides: http://thebiobucket.blogspot.com/2011/11/retrieve-gbif-species-distribution-data.html
-# http://www.molecularecologist.com/2013/04/species-distribution-models-in-r/
-# http://cran.r-project.org/web/packages/dismo/dismo.pdf
-# maybe useful: http://climate.calcommons.org/lists/datasets
-#Use python+regex to edit it to species, longitude, and latitude
-#then follow this SDM R procedure: http://cran.r-project.org/web/packages/dismo/vignettes/sdm.pdf
-
-#do maxent projections with JUST the southern pop of S. hammondii, and then compare with S. multiplicata projection??
-#do future climate projections for whole species? for all Spea?
-
 #According to this paper, restricted background point sampling is ineffective at reducing bias: http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
 #instead, best to continue using random background points but to spatially subsample the occurrence points
 
