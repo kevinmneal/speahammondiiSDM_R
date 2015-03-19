@@ -1,0 +1,332 @@
+---
+title: 'Species distribution modeling in R: an example with spadefoot toads'
+author: "Kevin Neal"
+date: "March 2, 2015"
+output:
+  ioslides_presentation:
+    transition: faster
+    widescreen: true
+    smaller: true
+---
+
+```{r, include=FALSE}
+setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files")
+
+
+library(ENMeval)
+library(dismo)
+library(maptools)
+library(maps)
+library(mapdata)
+library(ggplot2)
+library(rJava)
+library(rgdal)
+library(raster)
+
+speaGBIFraw <- read.table("Spea_hammondii_rawGBIFoutput.txt", header=TRUE, fill = TRUE, sep = "\t", quote="") #raw GBIF data requires these arguments for importing
+#contains locality points for Spea hammondii, the western spadefoot toad
+
+#This function, gbifclean(), takes raw output from GBIF or Vertnet and converts
+#it into the appropriate format for running in Maxent
+#this function should only be used for a single species at a time
+gbifclean <- function(gbifraw) {
+  latcol <- grep("decimal[Ll]atitude", colnames(gbifraw)) #returns column number for Latitude values
+  longcol <- grep("decimal[Ll]ongitude", colnames(gbifraw)) #returns column number for Longitude values
+  namecol <- grep("^scientificName$", colnames(gbifraw)) #returns column number for species name(s)
+  latlong <- gbifraw[,c(namecol, longcol, latcol)] #subsets the input data to just these 3 columns
+  colnames(latlong)[2] <- "Longitude" #changes column name to "Longitude"
+  colnames(latlong)[3] <- "Latitude" #changes column name to "Latitude"
+  latlong[,1] <- "Spea hammondii" #CHANGE BASED ON INPUT SPECIES! Converts names in column 1 to proper name
+  latlong <- latlong[complete.cases(latlong), ] #removes rows with any missing data
+  latlong[,2] <- abs(latlong[,2]) * -1 #ensures that longitude values are negative; use as appropriate for region
+  latlong[,3] <- abs(latlong[,3]) #ensures that latitude values are positive; use as appropriate for region
+  latlong
+}
+speaGBIFclean <- gbifclean(speaGBIFraw)
+
+#plotgbifclean() then takes the output from gbifclean() (or any dataframe 
+#with that speciesname, longitude, latitude format) and plots it on a map
+#may have to fix the projection of the "wrld_simpl" map...
+plotgbifclean <- function(latlong) {
+  data(wrld_simpl) #loads world map
+  xlowlim <- min(latlong$Longitude) - 0 #uses values in data to set appropriate limits on plot axes
+  xuplim <- max(latlong$Longitude) + 0
+  ylowlim <- min(latlong$Latitude) - 0
+  yuplim <- max(latlong$Latitude) + 0
+  plot(wrld_simpl, xlim = c(xlowlim, xuplim), ylim = c(ylowlim, yuplim), axes=TRUE, ylab="Latitude", xlab="Longitude", cex.axis=0.7)
+  points(latlong$Longitude, latlong$Latitude, col='purple', pch=20, cex=0.75) #adds points to map
+  box() #puts box around plot
+}
+plotgbifclean(speaGBIFclean)
+
+spealoc <- speaGBIFclean[,2:3] #only need lat and long columns for maxent
+head(spealoc)
+plot(spealoc)
+plot(wrld_simpl, add=T, border='blue', lwd=2)
+
+#delete aberrant points
+speaLocfix <- subset(spealoc, subset=((Latitude > 28.5) & (Longitude < -120 | Latitude < 39.3) & (Longitude < -118.5 | Latitude < 36.7)))
+#removes points outside Spea hammondii's known range; likely other Spea species that look very similar
+dim(speaLocfix)
+plot(speaLocfix)
+plot(wrld_simpl, add=T, border='blue', lwd=2)
+
+#subsampling data - not required; other methods of dealing with bias
+#could make this a function...
+speaspdf <- SpatialPointsDataFrame( speaLocfix[ c("Longitude", "Latitude") ], data = data.frame(speaLocfix), proj4string = CRS("+proj=longlat +datum=WGS84")) #makes a "spatial points dataframe"...
+r <- raster(speaspdf) #converting to raster only works if I project the localities first using line above???
+
+speaLocfix
+head(speaspdf)
+res(r) <- 0.5
+r <- extend(r, extent(r)+1)
+speasel <- gridSample(speaspdf, r, n=1) #produces subsample of n=1 point from each raster grid; this will be occurrence data input
+p <- rasterToPolygons(r)
+plot(p, border='gray')
+points(speaspdf)
+points(speasel, cex=1, col='red', pch='x')
+
+bclim2.5Shamnarrow = brick("ShamnarrowBC_2.5.grd")
+MIROCLGMbrick <- brick("bioclimLGM_MIROC.grd")
+MPILGMbrick <- brick("bioclimLGM_MPI.grd")
+CCSM4LGMbrick <- brick("bioclimLGM_CCSM4.grd")
+gd2070brick <- brick("bioclimGD2070_rcp45.grd")
+gf2070brick <- brick("bioclim2070_GF_rcp85.grd")
+
+
+sham_p = kfold(speasel, 5) #vector of group assignments, splitting speasel into 5 eval groups
+sham_a = kfold(pseudoabscoords, 5) #same for the background points
+test = 2 #select which of the 5 groups to use as testgroup
+train_p = speasel[sham_p!=test, c("Longitude", "Latitude")] #presence points for training model
+train_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for training model
+test_p = speasel[sham_p==test, c("Longitude", "Latitude")] #presence points for testing model
+test_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for testing model
+
+bg <- randomPoints(bclim2.5Shamnarrow, 10000) #pulls random background points from extent of raster
+
+```
+
+## What is Species Distribution Modeling?
+- statistically predict species distribution based on known occurrences and environmental data
+- useful for:
+    - predicting new localities
+    - understanding climatic niche
+    - predicting past and future distributions
+    
+![Species Distribution Modeling](http://i.imgur.com/EHO6XOf.png?1)
+
+## Doing SDM in MaxEnt
+- MaxEnt: Maximum entropy
+- Generally accepted as the best model for presence-only datasets
+- 3 inputs: occurrence points, background points, environmental layers
+- program examines environmental values at occurrence points and background points
+- outputs: prediction map, stats on environmental variable importance and model fit
+
+![Species Distribution Modeling](http://i.imgur.com/EHO6XOf.png?1)
+
+## Why am I doing it?
+- Spea hammondii - western spadefoot toad
+![Spea hammondii](http://i.imgur.com/PsRfF6F.jpg?1)
+
+## Why am I doing it?
+- *spadefoot*
+!["spadefoot"](http://i.imgur.com/Au6eyjP.jpg?1)
+
+## Why am I doing it?
+- understand environmental contributions to range limit
+- predict range shift under different climate scenarios
+- estimate past range to explore ancient hybridization with currently-allopatric congeners
+- all part of a broader PhD dissertation on landscape genomics of Spea hammondii
+
+## Getting and manipulating data
+- One of the biggest challenges of running species distribution models is getting data in the proper format
+- getting appropriate data points, using proper formatting, equivalent spatial projections, equal raster extent, consistent file names,...
+
+## Species occurrence points
+- GBIF (Global Biodiversity Information Facility)
+- raw GBIF data: 940 occurrences, 208 variables...
+    - challenge: how do we go from this raw data to the data we need?
+    - How do we check that all the points are actually our species of interest?
+- all we need are two variables: longitude and latitude
+```{r}
+head(speaGBIFraw)
+```
+
+## Cleaning up occurrence points
+- built a function to clean up raw GBIF output
+```{r making a function to clean up the locality data, eval=FALSE} 
+gbifclean <- function(gbifraw) {
+  latcol <- grep("decimal[Ll]atitude", colnames(gbifraw)) #returns column number for Latitude values
+  longcol <- grep("decimal[Ll]ongitude", colnames(gbifraw)) #returns column number for Longitude values
+  namecol <- grep("^scientificName$", colnames(gbifraw)) #returns column number for species name(s)
+  latlong <- gbifraw[,c(namecol, longcol, latcol)] #subsets the input data to just these 3 columns
+  colnames(latlong)[2] <- "Longitude" #changes column name to "Longitude"
+  colnames(latlong)[3] <- "Latitude" #changes column name to "Latitude"
+  latlong[,1] <- "Spea hammondii" #Converts names in column 1 to proper name
+  latlong <- latlong[complete.cases(latlong), ] #removes rows with any missing data
+  latlong[,2] <- abs(latlong[,2]) * -1 #ensures that longitude values are negative; use as appropriate for region
+  latlong[,3] <- abs(latlong[,3]) #ensures that latitude values are positive; use as appropriate for region
+  latlong #prints fixed data at the end to be put into new object
+}
+```
+- complete.cases() is a nifty function that returns row numbers that have no missing data
+    - can use to remove rows with missing data and put into new object
+
+## Cleaning up occurrence points
+```{r}
+gbifclean(speaGBIFraw) #runs the clean-up function
+head(speaGBIFclean)
+```
+Much better!
+
+## Cleaning up occurrence points
+## What about spatially-aberrant points?
+- congeners look very similar
+- Spea hammondii was somewhat recently split (into S. hammondii and S. multiplicata), so some older records may be uncorrected S. multiplicata (the two species do not overlap)
+- range is well-known so can easily ID outliers
+
+
+
+## Plotting occurrence points
+- function to plot/visualize occurrence points
+- automatically limits map extent to area of occurrence points
+```{r, eval=FALSE}
+plotgbifclean <- function(latlong) {
+  data(wrld_simpl) #loads world map
+  xlowlim <- min(latlong$Longitude) - 0 #uses values in data to set appropriate limits on plot axes
+  xuplim <- max(latlong$Longitude) + 0
+  ylowlim <- min(latlong$Latitude) - 0
+  yuplim <- max(latlong$Latitude) + 0
+  plot(wrld_simpl, xlim = c(xlowlim, xuplim), ylim = c(ylowlim, yuplim), axes=TRUE, ylab="Latitude", xlab="Longitude", cex.axis=0.7)
+  points(latlong$Longitude, latlong$Latitude, col='purple', pch=20, cex=0.75) #adds points to map
+  box() #puts box around plot
+}
+```
+
+## Plotting occurrence points
+```{r}
+par(mfrow=c(1,1))
+plotgbifclean(speaGBIFclean) #executes plotting function
+```
+
+## Plotting occurrence points
+- remove points outside range likely to be records of other, similar species
+```{r}
+speaLocfix <- subset(spealoc, subset=((Latitude > 28.5) & (Longitude < -120 | Latitude < 39.3) & (Longitude < -118.5 | Latitude < 36.7)))
+#clips out points that do not fall in expected range
+par(mfrow=c(1,1))
+plot(wrld_simpl, border="black", lwd=2, xlim=c(-125,-110), ylim=c(25,45))
+points(speaLocfix, col="red")
+box()
+```
+
+## Subsampling occurrence points
+- Differential sampling can bias the model (numerous published studies on this)
+- Divide area into grid and sample one occurrence point per grid
+
+## Subsampling occurrence points
+```{r, small}
+speasel <- gridSample(speaspdf, r, n=1) #produces subsample of n=1 point from each raster grid; this will be occurrence data input
+p <- rasterToPolygons(r)
+par(mfrow=c(1,2))
+plot(p, border='gray', main="before subsampling")
+points(speaspdf)
+plot(p, border='gray', main="after subsampling")
+points(speasel, cex=1, col='red', pch='x')
+```
+
+## Environmental layers
+- Bioclim variables: biologically-relevant measures of climate
+    - Bio1 to Bio19
+    - e.g. Annual mean temperature (bio1), min temp. of coldest month (bio6), annual precip (bio12), precip of warmest quarter (bio18), etc.
+  
+## Environmental layers
+- downloading layers and cropping to relevant area:
+- "getData()" function in "raster" package; only works for current environmental layers
+```{r, eval=FALSE}
+BClim2_5 = getData("worldclim", var="bio", res=2.5, path="bioclim2.5/") #download 19 bioclim variables, 2.5arcmin resolution
+ShamRangenarrow = extent(-125.5, -110, 25, 45) #crop Bioclim layers to this extent
+bclim2.5Shamnarrow = crop(BClim2_5, ShamRangenarrow)
+writeRaster(bclim2.5Shamnarrow, filename="bioclim2.5/ShamnarrowBC_2.5.grd", overwrite=T)
+bclim2.5Shamnarrow = brick("bioclim2.5/ShamnarrowBC_2.5.grd")
+```
+
+## Past and present environmental layers
+- can project model fit to current climate data to other climate layers
+- more convoluted process for downloading bioclim layers from past and future
+    - download from worldclim site as GeoTIFF, import as raster and crop, convert format, change filenames to match current filenames, make RasterStack object
+```{r, eval=FALSE}
+makeprojlayers <- function(directories) { #function to take downloaded future layers and get them to proper format for running maxent...
+  for (i in 1:length(directories)) {
+    setwd(directories[i])
+    projtifs <- list.files() #directory is set before running function with setwd()
+    projtifs <- projtifs[c(1,12,13,14,15,16,17,18,19,2,3,4,5,6,7,8,9,10,11)]
+  
+    for (i in 1:19) {
+      crop(raster(projtifs[i]), ShamRangenarrow, filename=paste("bio",i,".tif", sep=""), overwrite=TRUE)
+    }
+    projtifsbio <- list.files(pattern="bio")
+    projtifsbio <- projtifsbio[c(1,12,13,14,15,16,17,18,19,2,3,4,5,6,7,8,9,10,11)] #reorders appropriately... ugh
+  
+    for (i in 1:19) {
+      writeRaster(raster(projtifsbio[i]), filename=paste("bio",i,".bil",sep=""), format="EHdr")
+   }
+    if (list.files(pattern="bio1.bil$") == "bio1.bil") {
+      cat(".bil rasters successfully created", sep=" ")
+    }
+  }
+  setwd(homedir)
+}
+```
+
+## Bioclim layers
+- each raster contains a range of values over the map area used in the model
+- imagine all stacked and taking value at a point on top of all - that occurrence point corresponds to a value in all 19 of these layers
+```{r}
+par(mfrow=c(1,1))
+plot(bclim2.5Shamnarrow) #plots the bioclim raster layers
+```
+
+## the Maxent model!
+- "dismo" package allows one to run MaxEnt through R
+  - MaxEnt also available as a GUI, but less efficient if doing multiple analyses
+- MaxEnt uses environmental values at occurrence points to train the model to predict probability of occurrence based on environmental variables
+- Background points across the raster used to sample environmental space that excludes target species
+
+## occurrence and background
+```{r}
+par(mfrow=c(1,1))
+bg <- randomPoints(bclim2.5Shamnarrow, 10000) #pulls random background points from extent of raster
+plot(bg, col="dark green", pch=4) #plots background points
+points(speasel, col="purple", pch=15) #plots occurrence points
+```
+
+## Running the MaxEnt model and plotting the results
+```{r, eval=FALSE}
+maxentpresent_randombg <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxentrun_randombg", args=c("-J", "-P"))
+predpresrandombg <- predict(maxentpresent_randombg, bclim2.5Shamnarrow) #predict() actually makes the prediction map
+plot(predpresrandombg, main="Current modeled distribution")
+plot(maxentpresent_randombg, main="bioclim variable contribution")
+```
+- In addition to prediction maps, can use other methods to test model fit and significance
+    - Cross-validation (divide occurrence points into test and training data)
+    - subsampling without replacement
+    - bootstrapping (with replacement)
+    
+## Jackknifing
+- iteratively omit each variable and re-run model to test environmental variable importance
+- can see bio18 (precip of warmest quarter) by itself is the best predictor variable in the model
+![jackknifing](http://i.imgur.com/o4jH6lo.jpg?1)
+
+## prediction map
+![present distribution](http://i.imgur.com/HILCUgcl.png?1)
+
+## variable contributions
+- bio18: precip of warmest quarter
+- bio19: precip of coldest quarter
+- bio14: precip of driest month
+- bio15: precip seasonality (coeff. of variation)
+![variable contributions](http://i.imgur.com/bEe4FDc.png?1)
+
+## Run model for other scenarios
+![all models](http://i.imgur.com/ec6Ikpp.png?1)
