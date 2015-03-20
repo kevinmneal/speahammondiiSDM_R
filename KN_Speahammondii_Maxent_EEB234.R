@@ -1,9 +1,3 @@
-#According to this paper, restricted background point sampling is ineffective at reducing bias: http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
-#instead, best to continue using random background points but to spatially subsample the occurrence points
-
-#More useful stuff! Formatting and model testing in R. Pretty much does what I did here but better...
-# https://github.com/LBAB-Humboldt/parallelMaxent
-
 #Using R to run a Species Distribution Model with climate projections for the western spadefoot toad, _Spea hammondii_
 setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files")
 
@@ -59,17 +53,8 @@ plotgbifclean <- function(latlong) {
 plotgbifclean(speaGBIFclean) #plotting the data may reveal aberrant points; these can be fixed later
 #points look a bit off; map projection probably different from regular latlong.
 #I think WorldClim data isn't projected--just latlong--so it shouldn't affect the Maxent analyses
+  #...and after doing them: it doesn't; they're all in WGS84 and plot fine, though ideally you should use an equal area projection
 
-#library(ggplot2) #I need to play around with this more. Maybe use ggmaps? Will be good to do this to 
-#get used to using ggplot and to make more precise and more attractive figures/maps
-#mp <- NULL #creates empty thingy
-#mapWorld <- borders("world", color="gray50", fill="gray50", xlim=range(spgeo$Longitude), ylim=range(spgeo$Latitude))
-#data(spgeo)
-#map("usa", xlim=range(spgeo$Longitude), ylim=range(spgeo$Latitude)) + mp
-#mp <- ggplot(spgeo, aes(x=Longitude, y=Latitude)) + mapWorld +geom_point(data=spgeo)
-#mp
-#ggplot(spealoc, aes(x=Longitude, y=Latitude)) + xlim(-125, -115) + ylim(27,39) + geom_point()
-#?borders
 
 #Using dismo! Referring here to the dismo vignette
 spealoc <- speaGBIFclean[,2:3] #only need lat and long columns for maxent
@@ -84,26 +69,32 @@ dim(speaLocfix)
 plot(speaLocfix)
 plot(wrld_simpl, add=T, border='blue', lwd=2)
 
-#subsampling data - not required; other methods of dealing with bias
-#could make this a function...
-speaspdf <- SpatialPointsDataFrame( speaLocfix[ c("Longitude", "Latitude") ], data = data.frame(speaLocfix), proj4string = CRS("+proj=longlat +datum=WGS84")) #makes a "spatial points dataframe"...
-r <- raster(speaspdf) #converting to raster only works if I project the localities first using line above???
-r
-?SpatialPointsDataFrame
-speaLocfix
-head(speaspdf)
-res(r) <- 0.5
-?res
-r <- extend(r, extent(r)+1)
-speasel2 <- gridSample(speaspdf, r, n=1) #produces subsample of n=1 point from each raster grid; this will be occurrence data input
-p <- rasterToPolygons(r)
-plot(p, border='gray')
-points(speaspdf)
-points(speasel2, cex=1, col='red', pch='x')
-#write.table(speasel, file="") #creates a file of this subsampled data
-#speasel, the subsampled set, can be used as the ENMeval input...
-?gridSample
 
+####Function: subsample.occ(), added 3-20-2015
+#subsamples occurrence data, writes it to a csv file;
+#can also assign function to an object and will get a SpatialPointsDataFrame object with subsampled points
+#The subsampled set will be used as occurrence point input for dismo models (e.g. maxent) and also ENMeval
+subsample.occ <- function(occurrences, resolution=0.5, crs="+proj=longlat +datum=WGS84", output="spdfSub.csv") {
+  #Longitude and Latitude columns in occurrence dataframe must be named as that
+  #resolution and projection are given default values but can be changed
+  spdf <- SpatialPointsDataFrame( occurrences[ c("Longitude", "Latitude") ], data = data.frame(occurrences), proj4string = CRS(crs)) #makes a "spatial points dataframe" object
+  r <- raster(spdf) #converting to raster only works if data has a spatial projection
+  res(r) <- resolution
+  r <- extend(r, extent(r)+1)
+  spdfSub <- gridSample(spdf, r, n=1) #produces subsample of n=1 point from each raster grid; this will be occurrence data input
+  write.csv(spdfSub, file=output) #writes csv with name of output arg in function
+  p <- rasterToPolygons(r) #allows you to plot the grid (can't plot an empty raster)
+  par(mfrow=c(1,2))
+  plot(p, border='gray', main='original samples')
+  points(spdf) #plots original data
+  plot(p, border='gray', main='subsamples')
+  points(spdfSub, cex=1, col='red', pch='x') #plots subsampled data
+  return(spdfSub)
+}
+spdfSub <- subsample.occ(speaspdf) #will run with the default args and write a csv with default name; 
+  #only required arg is dataframe with occurrences
+
+?return
 require(raster)
 BClim2_5 = getData("worldclim", var="bio", res=2.5, path="bioclim2.5/") #download 19 bioclim variables, 2.5arcmin resolution
 #may be easier/faster to use my pre-cropped files on other computer
@@ -120,14 +111,18 @@ countrycodes <- getData('ISO3')
 countrycodes
 #Mexico = MEX, USA = USA
 
-library(raster)
-usel <- getData("alt", country="USA")
-usel.r <- raster(usel)
-mexel <- getData("alt", country="MEX")
-elevation <- merge(usel, mexel)
+#use if you want to add elevation, though further steps will be needed for cropping it to align with bioclim layers, etc.
+#library(raster)
+#usel <- getData("alt", country="USA")
+#usel.r <- raster(usel)
+#mexel <- getData("alt", country="MEX")
+#mexel.r <- raster(mexel)
+#elevation <- merge(usel.r, mexel.r)
+?merge
 
+###Code for doing model evaluation in ENMeval package
 #shamoccENM <- cbind(speaLocfix[,1], speaLocfix[,2]) #have to convert long/lat to matrix in this way before running ENMevaluate
-shamnarrowbcENMeval <- ENMevaluate(speasel, bclim2.5Shamnarrow, bg.coords=pseudoabscoords, method="randomkfold", kfolds = 2)
+#shamnarrowbcENMeval <- ENMevaluate(speasel, bclim2.5Shamnarrow, bg.coords=pseudoabscoords, method="randomkfold", kfolds = 2)
 #can use n.bg to set random background points; may be worth pursuing method in molecularecologist.com of 
 #getting background points only from areas withon xx km of a presence point
 #bg.coords is user-inputted pseudoabsences, which I painstakingly generated...
