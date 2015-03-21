@@ -91,53 +91,48 @@ subsample.occ <- function(occurrences, resolution=0.5, crs="+proj=longlat +datum
   points(spdfSub, cex=1, col='red', pch='x') #plots subsampled data
   return(spdfSub)
 }
-spdfSub <- subsample.occ(speaspdf) #will run with the default args and write a csv with default name; 
+speasel <- subsample.occ(speaspdf, output="Speahammondii_0.5gridSubsample.csv") #will run with the default args and write a csv with default name; 
   #only required arg is dataframe with occurrences
 
-?return
+###Getting Bioclim layers
 require(raster)
 BClim2_5 = getData("worldclim", var="bio", res=2.5, path="bioclim2.5/") #download 19 bioclim variables, 2.5arcmin resolution
-#may be easier/faster to use my pre-cropped files on other computer
-ShamRange = extent(-125.5, -90.5, 15.5, 48.5) #crop Bioclim layers to this extent
-#do I crop to an extent to compare with other Spea species?
-ShamRangenarrow = extent(-125.5, -110, 25, 45)
+ShamRangenarrow = extent(-125.5, -110, 25, 45) #crop Bioclim layers to this extent
 bclim2.5Shamnarrow = crop(BClim2_5, ShamRangenarrow)
 writeRaster(bclim2.5Shamnarrow, filename="bioclim2.5/ShamnarrowBC_2.5.grd", overwrite=T)
 bclim2.5Shamnarrow = brick("bioclim2.5/ShamnarrowBC_2.5.grd")
-library(ENMeval)
-?extent
 
-countrycodes <- getData('ISO3')
-countrycodes
-#Mexico = MEX, USA = USA
+# ##use following if you want to add elevation, though further steps will be needed for cropping it to align with bioclim layers, etc.
+# countrycodes <- getData('ISO3')
+# countrycodes
+# Mexico = MEX, USA = USA
+# 
+# library(raster)
+# usel <- getData("alt", country="USA")
+# usel.r <- raster(usel)
+# mexel <- getData("alt", country="MEX")
+# mexel.r <- raster(mexel)
+# elevation <- merge(usel.r, mexel.r)
 
-#use if you want to add elevation, though further steps will be needed for cropping it to align with bioclim layers, etc.
-#library(raster)
-#usel <- getData("alt", country="USA")
-#usel.r <- raster(usel)
-#mexel <- getData("alt", country="MEX")
-#mexel.r <- raster(mexel)
-#elevation <- merge(usel.r, mexel.r)
-?merge
 
-###Code for doing model evaluation in ENMeval package
-#shamoccENM <- cbind(speaLocfix[,1], speaLocfix[,2]) #have to convert long/lat to matrix in this way before running ENMevaluate
-#shamnarrowbcENMeval <- ENMevaluate(speasel, bclim2.5Shamnarrow, bg.coords=pseudoabscoords, method="randomkfold", kfolds = 2)
-#can use n.bg to set random background points; may be worth pursuing method in molecularecologist.com of 
-#getting background points only from areas withon xx km of a presence point
-#bg.coords is user-inputted pseudoabsences, which I painstakingly generated...
+# ##Code for doing model evaluation in ENMeval package
+# shamoccENM <- cbind(speaLocfix[,1], speaLocfix[,2]) #have to convert long/lat to matrix in this way before running ENMevaluate
+# shamnarrowbcENMeval <- ENMevaluate(speasel, bclim2.5Shamnarrow, bg.coords=pseudoabscoords, method="randomkfold", kfolds = 2)
+# can use n.bg to set random background points; may be worth pursuing method in molecularecologist.com of 
+# getting background points only from areas withon xx km of a presence point
+# bg.coords is user-inputted pseudoabsences, which I painstakingly generated...
 
-data(shamnarrowbcENMeval)
-shamnarrowbcENMeval@results
-plot(shamnarrowbcENMeval@predictions[[which (shamnarrowbcENMeval@results$delta.AICc == 0) ]])
-plot(shambcENMeval@predictions[[which (shambcENMeval@results$delta.AICc == 0) ]], xlim=c(-125.5, -110), ylim=c(25, 40))
-points(shambcENMeval@occ.pts)
-shamnarrowbcENMeval@overlap #? see manual about this
-#***I should definitely subset the data before running, such that only 1 or 2 points are in any given cell...
+# data(shamnarrowbcENMeval)
+# shamnarrowbcENMeval@results
+# plot(shamnarrowbcENMeval@predictions[[which (shamnarrowbcENMeval@results$delta.AICc == 0) ]])
+# plot(shambcENMeval@predictions[[which (shambcENMeval@results$delta.AICc == 0) ]], xlim=c(-125.5, -110), ylim=c(25, 40))
+# points(shambcENMeval@occ.pts)
+# shamnarrowbcENMeval@overlap #? see manual about this
+# #***I should definitely subset the data before running, such that only 1 or 2 points are in any given cell...
+# 
+# colnames(pseudoabscoords)[1] <- "Longitude"
+# colnames(pseudoabscoords)[2] <- "Latitude"
 
-colnames(pseudoabscoords)[1] <- "Longitude"
-colnames(pseudoabscoords)[2] <- "Latitude"
-?stack
 
 #making a stack of Future layers for climate projection
 CMIP2070CN30s <- getData('CMIP5', var='bio', res=2.5, rcp=85, model='CN', year=70, path='bioclim2070_CN_rcp85_') #future; function goes to wrong URL...
@@ -156,14 +151,14 @@ bcGD2070crop <- crop(bcGD2070, ShamRangenarrow)
 #FOr PALEO reconstruction, CNRM-CM5 or IPSL-CM5A-LR appear to be best. Try IPSL first...
 #Worldclim website only has a few for LGM though. If you want to use the same model for mid-Holocene and LGM, try MPI-ESM-P
 #Really though, you will have to run the model for every paleoclimate model for robustness.
-pastfolders <- list.dirs("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclim_past")
-pastfolders <- pastfolders[4]
+pastfolders <- list.dirs("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclim_past", 
+                         recursive=F)
+pastfolders #amend this to a list of just the folders with .tiff climate raster layers you want to run the following function on
+
 homedir <- "C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files"
-setwd(homedir)
-getwd()
-pastfolders
-?list.dirs
-setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclimGD2070/cmip5/2-5m")
+
+#I have a lot of folders with a lot of different climate projection scenarios; this function helps automate
+#converting them from .tiff to .bil for maxent to use
 #must manually rename files or rearrange them in this list so that e.g. bio9 is the 9th item in the list; gets screwed up because of dumb sorting
 makeprojlayers <- function(directories) { #function to take downloaded future layers and get them to proper format for running maxent...
   for (i in 1:length(directories)) {
@@ -186,20 +181,19 @@ makeprojlayers <- function(directories) { #function to take downloaded future la
   }
   setwd(homedir)
 }
-list.files("bioclimGD2070", recursive=F)
-?raster
+
 setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclimGF2070_rcp85")
 makeprojlayers(GF_2070_rcp85)
 makeprojlayers(pastfolders)
 
-#now turn into a stack...
+#now turn into a stack... could turn this into a function too, maybe even incorporate into the above function?
 setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclim_past/MIROC-LGM")
 projbil <- list.files(pattern=".bil$")
 projbil <- projbil[c(1,12,13,14,15,16,17,18,19,2,3,4,5,6,7,8,9,10,11)] #reorder again...
 projbilstack <- stack(projbil)
 writeRaster(projbilstack, filename="bioclimLGM_MIROC.grd", overwrite=T) #saves stack to a file
 MIROCLGMbrick <- brick("bioclimLGM_MIROC.grd")
-?stack
+
 setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files/bioclim_past/MPL-lgm2_5")
 projbil <- list.files(pattern=".bil$")
 projbil <- projbil[c(1,12,13,14,15,16,17,18,19,2,3,4,5,6,7,8,9,10,11)] #reorder again...
@@ -220,39 +214,17 @@ projbil <- projbil[c(1,12,13,14,15,16,17,18,19,2,3,4,5,6,7,8,9,10,11)] #reorder 
 projbilstack <- stack(projbil)
 writeRaster(projbilstack, filename="bioclimGD2070_rcp45.grd", overwrite=T) #saves stack to a file
 gd2070brick <- brick("bioclimGD2070_rcp45.grd")
-?maxent
-###
-plot(CCSM4LGMbrick)
-plot(projbilstack)
-setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files")
-sham_p = kfold(speasel, 5) #vector of group assignments, splitting speasel into 5 eval groups
-sham_a = kfold(pseudoabscoords, 5) #same for the background points
-test = 2 #select which of the 5 groups to use as testgroup
-train_p = speasel[sham_p!=test, c("Longitude", "Latitude")] #presence points for training model
-train_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for training model
-test_p = speasel[sham_p==test, c("Longitude", "Latitude")] #presence points for testing model
-test_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for testing model
 
 bg <- randomPoints(bclim2.5Shamnarrow, 10000) #pulls random background points from extent of raster
-#maxentrun <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxentrun", args=c("-J", "-P"))
 maxentpresent_randombg <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxentrun_randombg", args=c("-J", "-P"))
-#maxentpresent_nopseudo <- maxent(bclim2.5Shamnarrow, speasel, path="maxentrun_nopseudo", args=c("-J", "-P"))
 maxentpresent_crossval <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_pres_crossval", args=c("-J", "-P", "replicates=5", "outputgrids=FALSE", "randomtestpoints=20"))
 maxentpresent_testargs <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_pres_testargs", randomtestpoints=20, args=c("-J", "-P"))
 
-length(speasel)
-?points
 #runs maxent with a=backgroundpoints, path=folder to send outputs to, args: -J does jackknife, -P shows response curves
 #when run with no pseudoabsence/bg arg, maxent randomly selects 1000 (or 10,000?) by default
 #for projecting onto other layers/scenarios: add arg "projectionlayers=layersdirectory"
-#maxentfuture <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxentrunfuture", args=c("-J", "-P", "projectionlayers=bioclim2070_CN_rcp85"))
-#maxentfuturenopseudo <- maxent(bclim2.5Shamnarrow, speasel, path="maxentrunfuturenopseudo", args=c("-J", "-P", "projectionlayers=bioclim2070_CN_rcp85"))
-#maxentfutureGD2070 <- maxent(bclim2.5Shamnarrow, speasel, path="maxentrunfuturenopseudo", args=c("-J", "-P", "projectionlayers=gd2070brick"))
-#maxentfutureGD2070 <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxent_GD2070_rcp45", args=c("-J", "-P", "projectionlayers=bioclimGD2070"))
 maxentfutureGD2070bg <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_GD2070_rcp45_randombg", args=c("-J", "-P", "projectionlayers=bioclimGD2070"))
 #have to direct the projectionlayers arg to a folder, not a RasterStack/RasterBrick object...
-#maxentGF2070rcp85 <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxent_GF2070_rcp85", args=c("-J", "-P", "projectionlayers=bioclimGF2070_rcp85"))
-#maxentGF2070rcp85_nopseudo <- maxent(bclim2.5Shamnarrow, speasel, path="maxent_GF2070_rcp85_nopseudo", args=c("-J", "-P", "projectionlayers=bioclimGF2070_rcp85"))
 maxentGF2070rcp85_randombg <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_GF2070_rcp85_randombg", args=c("-J", "-P", "projectionlayers=bioclimGF2070_rcp85"))
 maxentMPImidHol <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_past/MPI_midHol", args=c("-J", "-P", "projectionlayers=bioclim_past/MPL-midhol2_5"))
 maxentMPIlgm <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_past/MPI_LGM", args=c("-J", "-P", "projectionlayers=bioclim_past/MPL-lgm2_5"))
@@ -260,21 +232,17 @@ maxentCCSM4lgm <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_past/CC
 maxentMIROClgm <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_past/MIROC_LGM", args=c("-J", "-P", "projectionlayers=bioclim_past/MIROC-LGM"))
 
 
-#run Maxent GUI to check these?
-?maxent
-e = evaluate(test_p, test_a, maxentrun, bclim2.5Shamnarrow) #evaluates model; info should also be in maxent.html file
-e
-par(mfrow=c(2,3))
+par(mfrow=c(2,3)) #set plot dimensions
 par(mfrow=c(1,2))
-pred_me = predict(maxentrun, bclim2.5Shamnarrow) #final map output showing suitability/probability of occurrence; also in maxent.html file, or should be
+
+#final map output showing suitability/probability of occurrence; also in maxent.html file, or should be
+#if did maxent() with more than 1 replicate, this will do it on each replicate individually rather than summarize across them
+pred_me = predict(maxentrun, bclim2.5Shamnarrow) 
 plot(pred_me, 1, cex=0.5, legend=T, mar=par("mar"), main="Predicted presence of western spadefoots")
 #the run variable matters; the raster stack in there doesn't... I don't think...
-?predict
-plot(maxentrun)
-response(maxentrun)
+plot(maxentrun) #plots variable contribution in the model
+response(maxentrun) #plots response curves of individual variables
 plot(bg)
-evalGD2070 <- evaluate(test_p, test_a, maxentfutureGD2070, gd2070brick)
-evalGD2070
 
 #all of these have random background points
 predGD2070bg <- predict(maxentfutureGD2070bg, gd2070brick)
@@ -294,42 +262,22 @@ points(speasel)
 predMPImidHol <- predict(maxentMPImidHol, MPIMidHolbrick) #mid-Hol: warmer summers, cooler winters, overall avg T below present
 plot(predMPImidHol, main="mid-Holocene (~6ka) MPI model")
 
-predMPILGM <- predict(maxentMPIlgm, MPILGMbrick)
+predMPILGM <- predict(maxentMPIlgm, MPILGMbrick) #last glacial maximum, ~21ka
 plot(predMPILGM, main="Last Glacial Maximum (~22ka), MPI model")
 
-predCCSMLGM <- predict(maxentCCSM4lgm, CCSM4LGMbrick)
+predCCSMLGM <- predict(maxentCCSM4lgm, CCSM4LGMbrick) #LGM with different climate model
 plot(predCCSMLGM, main="Last Glacial Maximum (~22ka), CCSM4 model")
 
-predMIROCLGM <- predict(maxentMIROClgm, MIROCLGMbrick)
+predMIROCLGM <- predict(maxentMIROClgm, MIROCLGMbrick) #LGM with yet another climate model
 plot(predMIROCLGM, main="Last Glacial Maximum (~22ka), MIROC model")
 
-?getData
-?predict
-?maxent
-?threshold
-?response
-?plot
-predpres_crossval <- predict(maxentpresent_crossval, bclim2.5Shamnarrow)
-plot(predpres_crossval, main="Current modeled distribution") #why don't these limits work? ugh
-points(speasel, pch=4)
-plot(maxentpresent_crossval)
-response(maxentpresent_crossval)
 
-predpres_testargs <- predict(maxentpresent_testargs, bclim2.5Shamnarrow)
-plot(predpres_testargs)
-response(maxentpresent_testargs)
 #to plot by category, convert list to factors ... not relevant here but for future ref
-dumb = c("Spea", "Bufo", "Rana")
-dumbfactor <- as.factor(dumb)
-plot(speaLocfix, col=dumbfactor)
-legend("topright", legend=dumbfactor, fill=dumbfactor)
+#dumb = c("Spea", "Bufo", "Rana")
+#dumbfactor <- as.factor(dumb)
+#plot(speaLocfix, col=dumbfactor)
+#legend("topright", legend=dumbfactor, fill=dumbfactor)
 
-### Re-projecting rasters to equal-area
-# once you get through these, go back and re-execute subsampling, maxent, etc
-
-#install.packages("spatial.tools")
-#library(spatial.tools)
-#?spatial_sync_raster
 
 ###March 18
   # testing use of args in maxent()
@@ -342,13 +290,14 @@ points(speasel, pch=4)
 plot(maxentpresent_crossval)
 response(maxentpresent_crossval)
 
+#testing with bootstrap replicates
 maxentpresent_boots <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_pres_boots", args=c("-J", "-P", "replicates=5", "replicatetype=bootstrap", "randomseed=TRUE", "randomtestpoints=20"))
 predpres_boots <- predict(maxentpresent_boots, bclim2.5Shamnarrow)
 plot(predpres_boots, main="Current modeled distribution, bootstrapping")
 points(speasel, pch=4)
 response(maxentpresent_boots)
 
-#start using the "writebackgroundpredictions" option to get the lambdas file to run in... ENMeval? I think?
+#start using the "writebackgroundpredictions" option to get the lambdas file to run in... ENMeval? I think? maybe skip this
 maxentpresent_boots_1rep <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_pres_boots_1rep", args=c("-J", "-P", "replicatetype=bootstrap", "randomtestpoints=20"))
 predpres_boots_1rep <- predict(maxentpresent_boots_1rep, bclim2.5Shamnarrow)
 plot(predpres_boots_1rep, main="Current modeled distr., 20% bs testpts")
@@ -356,10 +305,11 @@ points(speasel, pch=4, col="red")
 response(maxentpresent_boots_1rep)
 
 #For final outputs... do I run with replicates? (no) With test samples? (not sure)
-
+#
 maxentpresent_notest <- maxent(bclim2.5Shamnarrow, speasel, a=bg, path="maxent_pres_notest", args=c("-J", "-P"))
 predpres_notest <- predict(maxentpresent_notest, bclim2.5Shamnarrow)
 plot(predpres_notest, main="Current modeled distr., no testpts") 
 points(speasel, pch=4, col="red")
 response(maxentpresent_boots_1rep)
 pairs(bclim2.5Shamnarrow)
+
