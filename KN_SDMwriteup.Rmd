@@ -108,7 +108,41 @@ bg <- randomPoints(bclim2.5Shamnarrow, 10000) #pulls random background points fr
     - predicting new localities
     - understanding climatic niche
     - predicting past and future distributions
-    
+ 
+Species distribution modeling (SDM), or sometimes "ecological niche modeling," (ENM), is a tool for predicting species distributions and for determining environmental or other correlates of a species' presence in a given location. These models use a combination of spatial environmental layers, where each pixel has a value of some environmental parameter, and species occurrence points for its predictions. A popular program for conducting these is called Maxent (Phillips et al. 2006), which uses a model of maximum entropy for its predictions. Maxent has a graphical user interface that is relatively simple to use, but if one is doing many runs, automation starts to become a necessary time-saving step. Having used the Maxent GUI before and hoping to incorporate SDM's into my dissertation research, I decided that I would learn how to implement Maxent through code with R.
+
+I had to major goals with this project. The first and most important goal was to use the project as a means to become proficient in using the R language for data manipulation, analysis, and plotting. The second and more tangible goal was to use species distribution modeling with Maxent in R to predict past, present, and future distributions of the western spadefoot toad, *Spea hammondii*.
+
+The initial motivation for doing SDM's with *Spea hammondii* at all involved a peculiar discordance between molecular phylogenies within the genus *Spea*. There are four *Spea* species: *hammondii*, *multiplicata*, *intermontana*, and *bombifrons*; all are found only in western North America; *hammondii* has no current range overlap with the others, while the other three do have some overlap throughout their respective ranges. In a phylogeny of eight nuclear genes, one sees a pattern of *S. hammondii* (SHAM hereafter) as the sister group to the remaining three. However, with mitochondrial DNA, all SHAM individuals in the southern portion of their range come out as the sister group to *S. multiplicata* (SMULT hereafter). One hypothesis for why this may be is mitochondrial introgression from SMULT into only the southern population of SHAM, with the sweep failing to make its way north of the Tehachapi Mountains in central California. The problem with this hypothesis of introgression is that it requires interbreeding between SHAM and SMULT, when they are currently completely separated by the Mojave Desert (and no individuals of any *Spea* species are known from the Mojave). If introgression truly occurred, then, it must have taken place under different climatic circumstances under which the ranges overlapped. With the availability of global climate models from different points in the recent geologic past, to test the hypothesis I decided to use SDMs to predict the ranges of both species at representative climatic slices: a period of peak glaciation (Last Glacial Maximum, ~21ka), minimum glaciation (Last Interglacial, ~120ka), and an intermediate stage of glaciation (mid-Holocene, ~6ka). If distribution models under these different climatic scenarios showed expansions that led to the overlap of the two species, although it would not prove interbreeding, it would suggest that mitochondrial introgression could remain a viable hypothesis for the observed phylogenetic patterns.
+
+For this project I ended up running a Maxent SDM for only SHAM for the present, for two models of climate in 2070, and for two models of climate during the LGM (I will conduct LIG modeling and modeling of SMULT in the future) as a starting point. To do this I relied on an R package called "dismo" (Hijmans et al. 2014) to implement Maxent in R. My included code is heavily commented, but I will cover the methods in brief. I downloaded raw occurrence data for SHAM from the Global Biodiversity Information Facility (GBIF) (this was done through the website, but all following steps were done in R). I then cleaned up this data (raw data has 200+ columns to avoid any information loss from the different field notes of researchers) to get just Longitude and Latitude. I went through a number of clean-up steps for quality control to remove spatially-aberrant points or entries with missing data. To avoid biasing the Maxent model's determination of habitat suitability from the presence points, I split the area into grid cells and subsampled a single occurrence point from each grid; this substantially reduced the number of occurrence entries (794 to 57) but is a necessary step to control for biased sampling, and it proved not to inhibit the fit of the models.
+
+Now with presence points, I needed to acquire environmental layers. The Worldclim database has a global-scale collection of 19 biologically-relevant climate layers (bioclim), which are iterations of temperature and precipitation regimes, for both present and past climates. I downloaded, cropped, and projected these layers in R to ready them for use in Maxent with the occurrence points. The third piece to Maxent is background points. While some SDM models use absence or "pseudoabsence" points to fit the model, Maxent instead uses "background points" to sample the range of combinations of environmental variables in the study area, then checking these combinations against those that exist at the occurrence points to plot a continuous probability of occurrence across the study area.
+
+Using a jackknife option in the Maxent model, I was also able to quantify the contribution of each variable to the model; i.e. how well a given environmental layer predicts a species' distribution relative to all 19 variables in total. From this, for all runs (past, present, and future), the most important variables for SHAM were precipitation of the warmest quarter (BIO18), precipitation of the coldest quarter (BIO19), precipitation of the driest month (BIO14), and precipitation seasonality (BIO15). Many of these variables may be highly correlated with one another and potentially bias the model, however Maxent does take this into account and weighs the variables based on the correlations. Many researchers look at the correlations themselves and remove some variables, and this may be a task for future runs I conduct.
+
+Although I have not yet achieved the second goal of determining the viability of the introgression hypothesis, I am well on my way to being able to. Between all of the literature-reading and troubleshooting and code testing, I feel confident that I succeeded in the first goal of becoming proficient in coding in R, and I am grateful that this final project has led to such a long-term gain (and quite possibly a chapter of my dissertation). The work I do with this will continue; other steps will entail model evaluation (a package called ENMeval exists that can streamline this process), incorporating more climate scenarios (both past and present), and running models for SMULT and the other spadefoot species as well to better understand the evolutionary history of these peculiar amphibians.
+
+Figures made in R and explanations:
+
+Jackknife output:
+- iteratively omit each variable and re-run model to test environmental variable importance
+- can see bio18 (precip of warmest quarter) by itself is the best predictor variable in the model
+![jackknifing](http://i.imgur.com/o4jH6lo.jpg?1)
+
+## prediction map
+![present distribution](http://i.imgur.com/HILCUgcl.png?1)
+
+## variable contributions
+- bio18: precip of warmest quarter
+- bio19: precip of coldest quarter
+- bio14: precip of driest month
+- bio15: precip seasonality (coeff. of variation)
+![variable contributions](http://i.imgur.com/bEe4FDc.png?1)
+
+## Run model for other scenarios
+![all models](http://i.imgur.com/ec6Ikpp.png?1)
+
 ![Species Distribution Modeling](http://i.imgur.com/EHO6XOf.png?1)
 
 ## Doing SDM in MaxEnt
